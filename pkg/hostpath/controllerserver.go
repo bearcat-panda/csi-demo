@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"github.com/pborman/uuid"
 	"k8s.io/klog/v2"
 )
 
@@ -71,6 +72,49 @@ func (hp *hostpath) CreateVolume(ctx context.Context, req *csi.CreateVolumeReque
 	if hp.config.EnableTopology {
 		topologies = append(topologies, &csi.Topology{Segments: map[string]string{TopologyKeyNode: hp.config.NodeID}})
 	}
+
+	// 这里根据volume name判断是否已经存在了，存在了就返回就行了
+	if exVol, err := hp.state.GetVolumeByName(req.GetName()); err == nil {
+		// volume已经存在.但是大小不符合
+		if exVol.VolSize < capacity {
+			return nil, status.Errorf(codes.AlreadyExists, "Volume with the same name: %s but with different size already exist", req.GetName())
+		}
+		// 判断数据的恢复方式
+		if req.GetVolumeContentSource() != nil{
+			volumeSource := req.VolumeContentSource
+			switch volumeSource.Type.(type) {
+			// 校验: 从快照中恢复
+			case *csi.VolumeContentSource_Snapshot:
+				if volumeSource.GetSnapshot() != nil && exVol.ParentSnapID != "" && exVol.ParentSnapID != volumeSource.GetSnapshot().GetSnapshotId() {
+					return nil, status.Error(codes.AlreadyExists, "existing volume source snapshot id not matching")
+				}
+			// 校验: clone过程
+			case *csi.VolumeContentSource_Volume:
+				if volumeSource.GetVolume() != nil && exVol.ParentVolID != volumeSource.GetVolume().GetVolumeId() {
+					return nil, status.Error(codes.AlreadyExists, "existing volume source volume id not matching")
+				}
+			default:
+				return nil, status.Errorf(codes.InvalidArgument, "%v not a proper volume source", volumeSource)
+			}
+		}
+
+		return &csi.CreateVolumeResponse{
+			Volume: &csi.Volume{
+				VolumeId: exVol.VolID,
+				CapacityBytes: int64(exVol.VolSize),
+				VolumeContext: req.GetParameters(),
+				ContentSource: req.GetVolumeContentSource(),
+				AccessibleTopology: topologies,
+			},
+		}, nil
+	}
+
+	// 创建volume
+	volumeID := uuid.NewUUID().String()
+	kind := req.GetParameters()[storageKind]
+	// 创建hostpath的volume
+	vo, err :=
+
 
 }
 

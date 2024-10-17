@@ -1,8 +1,10 @@
 package hostpath
 
 import (
+	"github.com/bearcat-panda/csi-demo/pkg/state"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"google.golang.org/grpc/balancer/grpclb/state"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"sync"
 )
 
@@ -72,10 +74,43 @@ type Config struct {
 }
 
 
+// createVolume 分配容量，为 hostpath 卷创建目录，并将卷添加到列表中
+func (hp *hostpath) createVolume(volID, name string, cap int64, volAccessType state.AccessType, ephemeral bool, kind string) (*state.Volume, error) {
+	// 检查最大可用容量
+	if cap > hp.config.MaxVolumeSize {
+		return nil, status.Errorf(codes.OutOfRange, "Requested capacity %d exceeds maximum allowed %d", cap, hp.config.MaxVolumeSize)
+	}
+
+	// 判断是否配置了容量
+	if hp.config.Capacity.Enabled() {
+		if kind == "" {
+			// 选择具有足够剩余容量的种类。
+			for k, c := range hp.config.Capacity {
+				// 判断已经使用的容量和要申请的容量. 是否超出总容量
+				if hp.sumVolumeSizes(k) + cap <= c.Value() {
+					kind = k
+					break
+				}
+			}
+		}
+
+		if kind == "" {
+			// 还是无法匹配.直接返回错误
+
+		}
+	}
+}
 
 
-
-
+// 获取当前类型volume已经被使用的容量
+func (hp *hostpath) sumVolumeSizes(kind string) (sum int64) {
+	for _, volume := range hp.state.GetVolumes() {
+		if volume.Kind == kind {
+			sum += volume.VolSize
+		}
+	}
+	return
+}
 
 
 
