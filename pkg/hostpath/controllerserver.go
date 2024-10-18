@@ -113,8 +113,39 @@ func (hp *hostpath) CreateVolume(ctx context.Context, req *csi.CreateVolumeReque
 	volumeID := uuid.NewUUID().String()
 	kind := req.GetParameters()[storageKind]
 	// 创建hostpath的volume
-	vo, err :=
+	vol, err := hp.createVolume(volumeID, req.GetName(), capacity, requestedAccessType, false, kind)
+	if err != nil {
+		return nil, err
+	}
+	klog.V(4).Infof("created volume %s at path %s", vol.VolID, vol.VolPath)
 
+	//新卷的数据是否 允许来自备份数据
+	if req.GetVolumeContentSource() != nil {
+		// 获取卷的规范路径
+		path := hp.getVolumePath(volumeID)
+		volumeSource := req.VolumeContentSource
+		switch volumeSource.Type.(type) {
+		case *csi.VolumeContentSource_Snapshot:
+			if snapshot := volumeSource.GetSnapshot(); snapshot != nil {
+				err = hp.loadFromSnapshot(capacity, snapshot.GetSnapshotId(), path, requestedAccessType)
+				vol.ParentVolID = snapshot.GetSnapshotId()
+			}
+		case *csi.VolumeContentSource_Volume:
+			if srcVolume := volumeSource.GetVolume(); srcVolume != nil {
+				err = hp.loadFromVolume(capacity, srcVolume.GetVolumeId(), path, requestedAccessType)
+				vol.ParentVolID = srcVolume.GetVolumeId()
+			}
+		default:
+			err = status.Errorf(codes.InvalidArgument, "%v not a proper volume source", volumeSource)
+		}
+		if err != nil {
+			klog.V(4).Infof("VolumeSource error: %v", err)
+			if delErr := hp.DeleteVolume(volumeID); delErr != nil {
+
+			}
+		}
+
+	}
 
 }
 

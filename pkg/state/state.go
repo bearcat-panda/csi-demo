@@ -42,6 +42,7 @@ type Volume struct {
 	VolSize        int64
 	VolPath        string
 	VolAccessType  AccessType
+	// 数据恢复模式的id. 从文件恢复的id/块文件恢复的id
 	ParentVolID    string
 	ParentSnapID   string
 	Ephemeral      bool
