@@ -327,9 +327,21 @@ func (hp *hostpath) deleteVolume(volID string) error {
 		volPathHandler := volumepathhandler.VolumePathHandler{}
 		path := hp.getVolumePath(volID)
 		klog.V(4).Infof("deleteing loop device for file %s if it exists", path)
-		
+		if err := volPathHandler.DetachFileDevice(path); err != nil{
+			return fmt.Errorf("failed to remove loop device for file %s: %v", path, err)
+		}
 	}
 
+	path := hp.getVolumePath(volID)
+	if err := os.RemoveAll(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	if err := hp.state.DeleteVolume(volID); err != nil {
+		return err
+	}
+	klog.V(4).Infof("deleted hostpath volume: %s = %+v", volID, vol)
+	return nil
 }
 
 

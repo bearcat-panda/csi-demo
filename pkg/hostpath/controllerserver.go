@@ -4,10 +4,10 @@ import (
 	"context"
 	"github.com/bearcat-panda/csi-demo/pkg/state"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/pborman/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"github.com/pborman/uuid"
 	"k8s.io/klog/v2"
 )
 
@@ -140,14 +140,27 @@ func (hp *hostpath) CreateVolume(ctx context.Context, req *csi.CreateVolumeReque
 		}
 		if err != nil {
 			klog.V(4).Infof("VolumeSource error: %v", err)
-			if delErr := hp.DeleteVolume(volumeID); delErr != nil {
-
+			if delErr := hp.deleteVolume(volumeID); delErr != nil {
+				klog.V(2).Infof("deleting hostpath volume %v failed: %v", volumeID, delErr)
 			}
+			return nil, err
 		}
-
+		klog.V(4).Infof("successfully populate volume %s", vol.VolID)
 	}
 
+	return &csi.CreateVolumeResponse{
+		Volume: &csi.Volume{
+			VolumeId: volumeID,
+			CapacityBytes: req.GetCapacityRange().GetRequiredBytes(),
+			VolumeContext: req.GetParameters(),
+			ContentSource:  req.GetVolumeContentSource(),
+			AccessibleTopology: topologies,
+		},
+	}, nil
 }
+
+
+
 
 // validateVolumeMutableParameters is a helper function to check if the mutable parameters are in the accepted list
 func (hp *hostpath) validateVolumeMutableParameters(params map[string]string) error {
@@ -220,3 +233,5 @@ func (hp *hostpath) getControllerServiceCapabilities() []*csi.ControllerServiceC
 
 	return csc
 }
+
+
